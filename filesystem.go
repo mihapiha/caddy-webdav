@@ -42,7 +42,7 @@ type FileXattr struct {
 	webdav.File
 }
 
-const xattrPrefix = "dav:"
+const xattrPrefix = "user.dav:"
 
 func parsePropName(xattrName string) (xml.Name, bool) {
 	propName, ok := strings.CutPrefix(xattrName, xattrPrefix)
@@ -83,7 +83,7 @@ func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 			continue
 		}
 		
-		attr, err := xattr.Get(xattrName, fstat.Name())
+		attr, err := xattr.Get(fstat.Name(), xattrName)
 		if err != nil {
 			return nil, err
 		}

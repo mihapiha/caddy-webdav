@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/pkg/xattr"
@@ -20,7 +21,7 @@ func TestMain(m *testing.M) {
 		fmt.Println("Could not open test file")
 		os.Exit(1)
 	}
-		
+
 	retCode := m.Run()
 
 	os.Remove(testFile.Name()) // clean up
@@ -29,24 +30,100 @@ func TestMain(m *testing.M) {
 
 func Test_DeadProps(t *testing.T) {
 	for _, tt := range []struct {
-		explantion string
-		tags []string
-		values []string
+		explanation   string
+		tags          []string
+		values        []string
 		propsExpected map[xml.Name]webdav.Property
-		errExpected error
+		errExpected   error
 	}{
 		{
 			"regular",
-			[]string{xattrPrefix+"example.com/ns:attr"},
+			[]string{xattrPrefix + "example.com/ns:attr"},
 			[]string{"foobar"},
 			map[xml.Name]webdav.Property{
 				xml.Name{Space: "example.com/ns", Local: "attr"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "attr"}, InnerXML: []byte("foobar")}},
 			nil,
 		},
-	}{
-		t.Run(tt.explantion, func(t *testing.T) {
+		{
+			"regular two tags",
+			[]string{xattrPrefix + "example.com/ns:attr", xattrPrefix + "example.com/ns:name"},
+			[]string{"foobar", "foobaz"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "attr"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "attr"}, InnerXML: []byte("foobar")},
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first missing attr name, second ok",
+			[]string{xattrPrefix + "example.com/ns:", xattrPrefix + "example.com/ns:name"},
+			[]string{"foobar", "foobaz"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first missing attr name no colon, second ok",
+			[]string{xattrPrefix + "example.com/ns", xattrPrefix + "example.com/ns:name"},
+			[]string{"foobar", "foobaz"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first ok, second missing attr name",
+			[]string{xattrPrefix + "example.com/ns:name", xattrPrefix + "example.com/ns:"},
+			[]string{"foobaz", "foobar"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first ok, second missing attr name no colon",
+			[]string{xattrPrefix + "example.com/ns:name", xattrPrefix + "example.com/ns"},
+			[]string{"foobaz", "foobar"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first ok, second missing prefix",
+			[]string{xattrPrefix + "example.com/ns:name", "example.com/ns:attr"},
+			[]string{"foobaz", "foobar"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "name"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "name"}, InnerXML: []byte("foobaz")},
+			},
+			nil,
+		},
+		{
+			"first missing prefix, second",
+			[]string{"example.com/ns:name", xattrPrefix + "example.com/ns:attr"},
+			[]string{"foobaz", "foobar"},
+			map[xml.Name]webdav.Property{
+				xml.Name{Space: "example.com/ns", Local: "attr"}: webdav.Property{XMLName: xml.Name{Space: "example.com/ns", Local: "attr"}, InnerXML: []byte("foobar")},
+			},
+			nil,
+		},
+		{
+			"both missing prefix",
+			[]string{"example.com/ns:name", "example.com/ns:attr"},
+			[]string{"foobaz", "foobar"},
+			map[xml.Name]webdav.Property{},
+			nil,
+		},
+	} {
+		t.Run(tt.explanation, func(t *testing.T) {
 			for i := range tt.tags {
 				tag := tt.tags[i]
+
+				if !strings.HasPrefix(tag, xattrPrefix) {
+					continue
+				}
+
 				val := []byte(tt.values[i])
 
 				err := xattr.FSet(testFile, tag, val)
@@ -55,8 +132,18 @@ func Test_DeadProps(t *testing.T) {
 				}
 			}
 
+			defer func() {
+				for _, tag := range tt.tags {
+					if !strings.HasPrefix(tag, xattrPrefix) {
+						continue
+					}
+
+					xattr.FRemove(testFile, tag)
+				}
+			}()
+
 			xFile := FileXattr{testFile}
-			
+
 			props, err := xFile.DeadProps()
 
 			if got, want := err, tt.errExpected; got != want {
@@ -66,10 +153,7 @@ func Test_DeadProps(t *testing.T) {
 			if got, want := props, tt.propsExpected; !reflect.DeepEqual(got, want) {
 				t.Fatalf("props=%v, want=%v", got, want)
 			}
-			
-			for _, tag := range tt.tags {
-				xattr.FRemove(testFile, tag)
-			}
+
 		})
 	}
 }
@@ -83,19 +167,19 @@ func Test_parsePropName(t *testing.T) {
 	}{
 		{
 			"regular namespaced name",
-			xattrPrefix+"example.com/ns:attr",
+			xattrPrefix + "example.com/ns:attr",
 			xml.Name{Space: "example.com/ns", Local: "attr"},
 			true,
 		},
 		{
 			"regular namespaced name, more colons",
-			xattrPrefix+"https://example.com/ns:attr",
+			xattrPrefix + "https://example.com/ns:attr",
 			xml.Name{Space: "https://example.com/ns", Local: "attr"},
 			true,
 		},
 		{
 			"regular namespaced name, even more colons",
-			xattrPrefix+"https://example.com:9000/ns:attr",
+			xattrPrefix + "https://example.com:9000/ns:attr",
 			xml.Name{Space: "https://example.com:9000/ns", Local: "attr"},
 			true,
 		},
@@ -107,7 +191,7 @@ func Test_parsePropName(t *testing.T) {
 		},
 		{
 			"missing suffix",
-			xattrPrefix+"example.com/ns_attr",
+			xattrPrefix + "example.com/ns_attr",
 			xml.Name{},
 			false,
 		},

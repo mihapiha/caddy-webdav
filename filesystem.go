@@ -52,13 +52,17 @@ func parsePropName(xattrName string) (xml.Name, bool) {
 	}
 
 	parts := strings.Split(propName, ":")
-	
+
 	if len(parts) < 2 {
 		return xml.Name{}, false
 	}
 
 	namespace := strings.Join(parts[0:len(parts)-1], ":")
 	localName := parts[len(parts)-1]
+
+	if namespace == "" || localName == "" {
+		return xml.Name{}, false
+	}
 
 	return xml.Name{Space: namespace, Local: localName}, true
 }
@@ -69,7 +73,7 @@ func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	xattrNames, err := xattr.List(fstat.Name())
 	if err != nil {
 		return nil, err
@@ -82,7 +86,7 @@ func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 			//this xattr is not for webdav use
 			continue
 		}
-		
+
 		attr, err := xattr.Get(fstat.Name(), xattrName)
 		if err != nil {
 			return nil, err
@@ -90,7 +94,7 @@ func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 
 		props[propName] = webdav.Property{XMLName: propName, InnerXML: attr}
 	}
-	
+
 	return props, nil
 }
 

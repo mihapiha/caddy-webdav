@@ -3,6 +3,7 @@ package webdav
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"strings"
 
 	"os"
@@ -98,6 +99,53 @@ func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 	return props, nil
 }
 
-func (f *FileXattr) Patch([]webdav.Proppatch) ([]webdav.Propstat, error) {
-	return nil, nil
+func propertyToAttr(prop webdav.Property) string {
+	return fmt.Sprintf("%v%v:%v", xattrPrefix, prop.XMLName.Space, prop.XMLName.Local)
+}
+
+func (f *FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) {
+	status := make([]webdav.Propstat, 0, len(patches))
+	fstat, err := f.File.Stat()
+	if err != nil {
+		return nil, err
+	}
+	fName := fstat.Name()
+
+	for _, patch := range patches {
+		stat := webdav.Propstat{Props: patch.Props}
+		if patch.Remove {
+			success := true
+			for _, prop := range patch.Props {
+				attr := propertyToAttr(prop)
+				err := xattr.Remove(fName, attr)
+				if err != nil {
+					success = false
+					stat.ResponseDescription += fmt.Sprintf("attr: %v, err: %v", attr, err.Error())
+				}
+			}
+			stat.Status = 200
+			if !success {
+				stat.Status = 500
+			}
+		} else {
+			success := true
+			for _, prop := range patch.Props {
+				attr := propertyToAttr(prop)
+				err := xattr.Set(fName, attr, prop.InnerXML)
+				if err != nil {
+					success = false
+					stat.ResponseDescription += fmt.Sprintf("attr: %v, err: %v", attr, err.Error())
+				}
+			}
+			stat.Status = 201
+			if !success {
+				stat.Status = 500
+			}
+
+		}
+
+		status = append(status, stat)
+	}
+
+	return status, nil
 }

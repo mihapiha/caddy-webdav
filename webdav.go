@@ -89,7 +89,7 @@ func (wd WebDAV) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhtt
 
 	wdHandler := webdav.Handler{
 		Prefix:     prefix,
-		FileSystem: webdav.Dir(root),
+		FileSystem: WrapFS{webdav.Dir(root)},
 		LockSystem: wd.lockSystem,
 		Logger: func(req *http.Request, err error) {
 			if err == nil {

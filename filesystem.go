@@ -18,21 +18,21 @@ type WrapFS struct {
 	fileSystem webdav.Dir
 }
 
-func (fs *WrapFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
+func (fs WrapFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
 	return fs.fileSystem.Mkdir(ctx, name, perm)
 }
-func (fs *WrapFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
+func (fs WrapFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
 	file, err := fs.fileSystem.OpenFile(ctx, name, flag, perm)
 	wrapped := FileXattr{file}
 	return wrapped, err
 }
-func (fs *WrapFS) RemoveAll(ctx context.Context, name string) error {
+func (fs WrapFS) RemoveAll(ctx context.Context, name string) error {
 	return fs.fileSystem.RemoveAll(ctx, name)
 }
-func (fs *WrapFS) Rename(ctx context.Context, oldName, newName string) error {
+func (fs WrapFS) Rename(ctx context.Context, oldName, newName string) error {
 	return fs.fileSystem.Rename(ctx, oldName, newName)
 }
-func (fs *WrapFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
+func (fs WrapFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 	return fs.fileSystem.Stat(ctx, name)
 }
 

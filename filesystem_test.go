@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -205,6 +206,143 @@ func Test_parsePropName(t *testing.T) {
 
 			if got, want := propName, tt.propNameExpected; got != want {
 				t.Fatalf("propName=%v, want=%v", got, want)
+			}
+
+		})
+	}
+}
+
+func Test_DeadPropsPatch(t *testing.T) {
+	for _, tt := range []struct {
+		explanation   string
+		patches       []webdav.Proppatch
+		output        []webdav.Propstat
+		attrsExpected []string
+		errExpected   error
+	}{
+		{
+			"set 1 attr",
+			[]webdav.Proppatch{
+				{
+					Remove: false,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]webdav.Propstat{
+				{
+					Status: 201,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]string{xattrPrefix + "example.com:tag"},
+			nil,
+		},
+		{
+			"set 1, remove 1 attr",
+			[]webdav.Proppatch{
+				{
+					Remove: false,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Remove: true,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]webdav.Propstat{
+				{
+					Status: 201,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Status: 200,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]string{},
+			nil,
+		},
+		{
+			"remove nonexisting",
+			[]webdav.Proppatch{
+				{
+					Remove: true,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]webdav.Propstat{
+				{
+					Status: 500,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+			},
+			[]string{},
+			nil,
+		},
+		{
+			"set 2, remove 1 attr",
+			[]webdav.Proppatch{
+				{
+					Remove: false,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Remove: true,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Remove: false,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "https://example.org", Local: "tag"}}},
+				},
+			},
+			[]webdav.Propstat{
+				{
+					Status: 201,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Status: 200,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "example.com", Local: "tag"}}},
+				},
+				{
+					Status: 201,
+					Props:  []webdav.Property{{XMLName: xml.Name{Space: "https://example.org", Local: "tag"}}},
+				},
+			},
+			[]string{xattrPrefix + "https://example.org:tag"},
+			nil,
+		},
+	} {
+		t.Run(tt.explanation, func(t *testing.T) {
+			xFile := FileXattr{testFile}
+			propstat, err := xFile.Patch(tt.patches)
+
+			xattrs, err := xattr.FList(testFile)
+			if err != nil {
+				t.Fatalf("err getting xattrs: %v", err)
+			}
+
+			defer func() {
+				for _, attr := range xattrs {
+					xattr.FRemove(testFile, attr)
+				}
+			}()
+
+			if got, want := err, tt.errExpected; got != want {
+				t.Fatalf("err=%v, want=%v", got, want)
+			}
+
+			for i := range propstat {
+				//ignore err description
+				propstat[i].ResponseDescription = ""
+			}
+
+			if got, want := propstat, tt.output; !reflect.DeepEqual(got, want) {
+				t.Fatalf("propstat=%v, want=%v", got, want)
+			}
+
+			if got, want := xattrs, tt.attrsExpected; !slices.Equal(got, want) {
+				t.Fatalf("xattrs=%v, want=%v", got, want)
 			}
 
 		})

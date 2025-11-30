@@ -68,7 +68,7 @@ func parsePropName(xattrName string) (xml.Name, bool) {
 	return xml.Name{Space: namespace, Local: localName}, true
 }
 
-func (f *FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
+func (f FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 	props := make(map[xml.Name]webdav.Property)
 	fstat, err := f.File.Stat()
 	if err != nil {
@@ -103,7 +103,7 @@ func propertyToAttr(prop webdav.Property) string {
 	return fmt.Sprintf("%v%v:%v", xattrPrefix, prop.XMLName.Space, prop.XMLName.Local)
 }
 
-func (f *FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) {
+func (f FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) {
 	status := make([]webdav.Propstat, 0, len(patches))
 	fstat, err := f.File.Stat()
 	if err != nil {

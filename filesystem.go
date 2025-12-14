@@ -88,12 +88,8 @@ func parsePropName(xattrName string) (xml.Name, bool) {
 
 func (f FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 	props := make(map[xml.Name]webdav.Property)
-	fstat, err := f.File.Stat()
-	if err != nil {
-		return nil, err
-	}
 
-	xattrNames, err := xattr.List(fstat.Name())
+	xattrNames, err := xattr.List(f.path)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +102,7 @@ func (f FileXattr) DeadProps() (map[xml.Name]webdav.Property, error) {
 			continue
 		}
 
-		attr, err := xattr.Get(fstat.Name(), xattrName)
+		attr, err := xattr.Get(f.path, xattrName)
 		if err != nil {
 			return nil, err
 		}

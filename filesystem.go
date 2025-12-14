@@ -3,7 +3,11 @@ package webdav
 import (
 	"context"
 	"encoding/xml"
+	"path"
+	"path/filepath"
+
 	"fmt"
+
 	"strings"
 
 	"os"
@@ -12,10 +16,23 @@ import (
 	webdav "golang.org/x/net/webdav"
 )
 
-var _ webdav.FileSystem = (*WrapFS)(nil)
+var _ webdav.FileSystem = (WrapFS)(WrapFS{})
 
 type WrapFS struct {
 	fileSystem webdav.Dir
+}
+
+// Copy&Paste from webdav file.go
+func (fs WrapFS) resolve(name string) string {
+	if filepath.Separator != '/' && strings.IndexRune(name, filepath.Separator) >= 0 ||
+		strings.Contains(name, "\x00") {
+		return ""
+	}
+	dir := string(fs.fileSystem)
+	if dir == "" {
+		dir = "."
+	}
+	return filepath.Join(dir, filepath.FromSlash(path.Clean("/"+name)))
 }
 
 func (fs WrapFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
@@ -23,7 +40,7 @@ func (fs WrapFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error
 }
 func (fs WrapFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
 	file, err := fs.fileSystem.OpenFile(ctx, name, flag, perm)
-	wrapped := FileXattr{file}
+	wrapped := FileXattr{File: file, path: fs.resolve(name)}
 	return wrapped, err
 }
 func (fs WrapFS) RemoveAll(ctx context.Context, name string) error {
@@ -36,11 +53,12 @@ func (fs WrapFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 	return fs.fileSystem.Stat(ctx, name)
 }
 
-var _ webdav.File = (*FileXattr)(nil)
-var _ webdav.DeadPropsHolder = (*FileXattr)(nil)
+var _ webdav.File = (FileXattr)(FileXattr{})
+var _ webdav.DeadPropsHolder = (FileXattr)(FileXattr{})
 
 type FileXattr struct {
 	webdav.File
+	path string
 }
 
 const xattrPrefix = "user.dav:"
@@ -105,11 +123,6 @@ func propertyToAttr(prop webdav.Property) string {
 
 func (f FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) {
 	status := make([]webdav.Propstat, 0, len(patches))
-	fstat, err := f.File.Stat()
-	if err != nil {
-		return nil, err
-	}
-	fName := fstat.Name()
 
 	for _, patch := range patches {
 		stat := webdav.Propstat{Props: patch.Props}
@@ -117,7 +130,7 @@ func (f FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) 
 			success := true
 			for _, prop := range patch.Props {
 				attr := propertyToAttr(prop)
-				err := xattr.Remove(fName, attr)
+				err := xattr.Remove(f.path, attr)
 				if err != nil {
 					success = false
 					stat.ResponseDescription += fmt.Sprintf("attr: %v, err: %v", attr, err.Error())
@@ -131,7 +144,7 @@ func (f FileXattr) Patch(patches []webdav.Proppatch) ([]webdav.Propstat, error) 
 			success := true
 			for _, prop := range patch.Props {
 				attr := propertyToAttr(prop)
-				err := xattr.Set(fName, attr, prop.InnerXML)
+				err := xattr.Set(f.path, attr, prop.InnerXML)
 				if err != nil {
 					success = false
 					stat.ResponseDescription += fmt.Sprintf("attr: %v, err: %v", attr, err.Error())

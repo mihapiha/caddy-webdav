@@ -143,7 +143,12 @@ func Test_DeadProps(t *testing.T) {
 				}
 			}()
 
-			xFile := FileXattr{testFile}
+			stat, err := testFile.Stat()
+			if err != nil {
+				t.Fatalf("err getting file stat: %v", err)
+			}
+
+			xFile := FileXattr{testFile, "./" + stat.Name()}
 
 			props, err := xFile.DeadProps()
 
@@ -314,7 +319,12 @@ func Test_DeadPropsPatch(t *testing.T) {
 		},
 	} {
 		t.Run(tt.explanation, func(t *testing.T) {
-			xFile := FileXattr{testFile}
+			stat, err := testFile.Stat()
+			if err != nil {
+				t.Fatalf("err getting file stat: %v", err)
+			}
+
+			xFile := FileXattr{testFile, "./" + stat.Name()}
 			propstat, err := xFile.Patch(tt.patches)
 
 			xattrs, err := xattr.FList(testFile)
